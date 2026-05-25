@@ -1,4 +1,4 @@
-import { AfterViewChecked, Component, ElementRef, Input, NgZone, OnChanges, OnDestroy, SimpleChanges, ViewChild, inject } from '@angular/core';
+import { AfterViewChecked, Component, ElementRef, Input, OnChanges, OnDestroy, SimpleChanges, ViewChild, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatFormField } from '@angular/material/form-field';
 import { MatInput } from '@angular/material/input';
@@ -21,7 +21,6 @@ export class DocumentChatComponent implements AfterViewChecked, OnChanges, OnDes
   @ViewChild('chatInput', { read: ElementRef }) chatInput!: ElementRef<HTMLInputElement>;
 
   private chatService = inject(ChatService);
-  private zone = inject(NgZone);
 
   messages: ChatMessage[] = [];
   inputValue = '';
@@ -83,9 +82,11 @@ export class DocumentChatComponent implements AfterViewChecked, OnChanges, OnDes
   ngOnDestroy(): void {}
 
   private scheduleFocus(): void {
-    this.zone.runOutsideAngular(() => {
-      setTimeout(() => this.chatInput.nativeElement.focus());
-    });
+    const el = this.chatInput?.nativeElement;
+    if (el) {
+      el.disabled = false;
+      el.focus();
+    }
   }
 
   private replaceTyping(msg: ChatMessage): void {
