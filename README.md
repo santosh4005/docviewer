@@ -13,7 +13,7 @@ cp .env.example .env
 .\scripts\start.ps1         # Windows (PowerShell)
 ```
 
-Open [http://localhost:8000](http://localhost:8000).
+Open [http://localhost:8080](http://localhost:8080).
 
 Drop `.docx` files into the `docs/` folder — they appear immediately (no restart needed).
 
@@ -36,7 +36,7 @@ Drop `.docx` files into the `docs/` folder — they appear immediately (no resta
 ```bash
 cd backend
 uv sync
-uv run uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --reload --port 8080
 uv run pytest
 ```
 
@@ -45,7 +45,7 @@ uv run pytest
 ```bash
 cd frontend
 npm install
-npm start          # dev server at localhost:4200, proxies /api to localhost:8000
+npm start          # dev server at localhost:4200, proxies /api to localhost:8080
 npm test           # unit tests (Vitest)
 npm run test:integration   # integration tests (requires backend running)
 ```
@@ -62,7 +62,7 @@ docker compose up --build
 
 ## Architecture
 
-Single Docker container on port 8000. FastAPI serves both the Angular SPA and all `/api/*` routes.
+Single Docker container on port 8080. FastAPI serves both the Angular SPA and all `/api/*` routes.
 
 ```
 frontend/   Angular SPA (TypeScript/SCSS)

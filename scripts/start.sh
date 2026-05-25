@@ -29,7 +29,7 @@ docker run -d \
   --name "$CONTAINER" \
   -v "$ROOT/docs:/app/docs" \
   "${ENV_ARG[@]}" \
-  -p 8000:8000 \
+  -p 8080:8000 \
   "$IMAGE"
 
-echo "App running at http://localhost:8000"
+echo "App running at http://localhost:8080"

@@ -8,7 +8,7 @@ Backend is implemented and all tests pass. Frontend not yet started. Full specif
 
 ## Architecture
 
-Single Docker container exposing port 8000. FastAPI serves both the Angular SPA (static files) and all `/api/*` routes from the same port.
+Single Docker container exposing port 8080. FastAPI serves both the Angular SPA (static files) and all `/api/*` routes from the same port.
 
 ```
 frontend/   ← Angular SPA (TypeScript/SCSS) — build output served by FastAPI
@@ -68,7 +68,7 @@ npm run build                    # production build → dist/
 
 # Manual build+run
 docker build -t docviewer .
-docker run -v $(pwd)/docs:/app/docs -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY -p 8000:8000 docviewer
+docker run -v $(pwd)/docs:/app/docs -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY -p 8080:8000 docviewer
 ```
 
 ## Environment Variables

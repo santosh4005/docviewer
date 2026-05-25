@@ -22,7 +22,7 @@ docker run -d `
     --name $Container `
     -v "${Root}\docs:/app/docs" `
     @EnvArg `
-    -p 8000:8000 `
+    -p 8080:8000 `
     $Image
 
 Write-Host "App running at http://localhost:8000"
