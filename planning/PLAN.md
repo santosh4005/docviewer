@@ -330,6 +330,10 @@ All frontend code lives in `frontend/src/app/`.
 
 ## 9. AI Chat Feature
 
+### AI design
+
+When writing code to make calls to LLMs, use your Cerebras skill to use LiteLLM via OpenRouter to the `openrouter/google/gemini-2.5-flash-lite` model. You should use Structured Outputs so that you can interpret the results.
+
 ### How It Works
 
 1. The user opens a document — the chat panel initialises with the document filename.
