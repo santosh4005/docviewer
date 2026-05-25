@@ -21,7 +21,7 @@
 | Frontend — services | ✅ Done | `DocumentService`, `ChatService`; `encodeURIComponent` for filenames |
 | Frontend — unit tests | ✅ Done | 17 tests, all passing (`npm test`) |
 | Frontend — integration tests | ✅ Done | 10 tests against real backend (`npm run test:integration`) |
-| Docker / scripts | ⬜ Not started | |
+| Docker / scripts | ✅ Done | Multi-stage Dockerfile; `start.sh` always rebuilds; host port 8080 → container 8000 |
 
 ### Backend Implementation Decisions
 
@@ -41,6 +41,15 @@
 - **`changeOrigin: true`** in `src/proxy.conf.json` — prevents the dev-server proxy from forwarding the browser's `Host: localhost:4200` header to the backend, which would mismatch the backend's own host.
 - **`of()` observables in unit tests** emit synchronously — component state is fully settled immediately after `send()`, so no `fakeAsync`/`tick()` or zone.js is needed. Tests that verify in-flight loading state check `comp.isLoading` directly rather than polling the DOM.
 - **Integration tests use plain `fetch`** in a Node Vitest environment (`vitest.integration.config.ts`) — no Angular DI or TestBed needed; tests verify the API contract (status codes, response shapes, error codes) against the real FastAPI process.
+- **`import 'zone.js'` in `main.ts`** — Angular 21's esbuild-based builder silently ignores `"zone.js"` listed in the `angular.json` `polyfills` array; zone.js must be imported as the first statement in `main.ts` to be bundled and to patch browser APIs before Angular bootstraps.
+- **`provideZoneChangeDetection({ eventCoalescing: true })`** in `app.config.ts` — Angular 20+ defaults to zoneless change detection in new projects; zone-based CD must be opted in explicitly via this provider, or `HttpClient` callbacks will never trigger a re-render even if zone.js is loaded.
+
+### Docker / Scripts Decisions
+
+- **Host port 8080, container port 8000** — the Dockerfile exposes and uvicorn listens on 8000; `start.sh` maps it to 8080 on the host to avoid conflicts with common local dev servers.
+- **`start.sh` always rebuilds** — `docker build` is run unconditionally on every `./scripts/start.sh` invocation so that code changes are never silently skipped. Docker layer caching keeps rebuilds fast when only application files change.
+- **`--env-file .env`** passed to `docker run` — more reliable than exporting variables individually; the script checks for `.env` at the project root and passes `--env-file` only if the file exists, so the container starts without error even when `.env` is absent (chat will return 503 until `OPENROUTER_API_KEY` is set).
+- **Python 3.10 in the runtime stage** — matches the uv lockfile target; the Dockerfile uses `python:3.10-slim` rather than 3.12 to avoid lockfile regeneration.
 
 ---
 
@@ -56,7 +65,7 @@ The app is packaged as a single Docker container. Users point the container at a
 
 ### First Launch
 
-The user runs a single Docker command. A browser opens to `http://localhost:8000`. They immediately see:
+The user runs `./scripts/start.sh`. A browser opens to `http://localhost:8080`. They immediately see:
 
 - A home page listing all `.docx` documents found in the `docs/` folder
 - Each document shown with its filename (and title if extractable from content)
@@ -93,7 +102,8 @@ The user runs a single Docker command. A browser opens to `http://localhost:8000
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  Docker Container (port 8000)                   │
+│  Docker Container (internal port 8000)          │
+│  Exposed as host port 8080                      │
 │                                                 │
 │  FastAPI (Python/uv)                            │
 │  ├── /api/documents        List all docs        │
@@ -104,7 +114,7 @@ The user runs a single Docker command. A browser opens to `http://localhost:8000
 │                                                 │
 │  docs/ volume-mounted from host                 │
 │  mammoth converts .docx → HTML on request       │
-│  Anthropic Claude API answers document Q&A      │
+│  LiteLLM → OpenRouter → Gemini answers Q&A      │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -457,7 +467,7 @@ The `docs/` folder is mounted into the container at runtime:
 ```bash
 docker run -v /path/to/your/docs:/app/docs \
            -e OPENROUTER_API_KEY=sk-or-... \
-           -p 8000:8000 docviewer
+           -p 8080:8000 docviewer
 ```
 
 The start script handles the volume and port mapping automatically.
@@ -465,9 +475,10 @@ The start script handles the volume and port mapping automatically.
 ### Start/Stop Scripts
 
 **`scripts/start.sh`** (macOS/Linux):
-- Builds the Docker image if not already built (or if `--build` flag passed)
-- Runs the container with the volume mount, port mapping, and `OPENROUTER_API_KEY` from the host environment
-- Prints `App running at http://localhost:8000`
+- Always rebuilds the Docker image (Docker layer cache keeps this fast)
+- Passes `--env-file .env` if a `.env` file exists at the project root
+- Runs the container with the volume mount and port mapping (`8080:8000`)
+- Prints `App running at http://localhost:8080`
 
 **`scripts/stop.sh`** (macOS/Linux):
 - Stops and removes the running container
@@ -493,7 +504,7 @@ All scripts are idempotent — safe to run multiple times.
 - **`ai_chat.py`**: system prompt contains document text; question is in the user message; `response_format` is set to the Pydantic model
 - **Edge cases**: corrupt file returns 422; filename with spaces handled correctly
 
-### Frontend (Jest + Angular Testing Library) — lives in `frontend/`
+### Frontend (Vitest + Angular TestBed) — lives in `frontend/`
 
 - **DocumentIndexComponent**: renders document cards from mock API response; shows empty state; shows loading spinner
 - **DocumentViewComponent**: renders HTML content from mock API; shows error state on failed fetch; "Back" link navigates to index; passes correct filename to `DocumentChatComponent`
