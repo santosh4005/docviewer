@@ -1,0 +1,10 @@
+services:
+  docviewer:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./docs:/app/docs
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    restart: unless-stopped
