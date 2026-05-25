@@ -30,9 +30,8 @@ def answer(document_text: str, question: str) -> str:
         max_tokens=1024,
     )
 
-    parsed = response.choices[0].message.parsed
+    parsed = getattr(response.choices[0].message, "parsed", None)
     if parsed is not None:
         return parsed.answer
 
-    # Fallback: model returned JSON string instead of parsed object
     return _ChatAnswer.model_validate_json(response.choices[0].message.content).answer
