@@ -1,4 +1,4 @@
-import { AfterViewChecked, Component, ElementRef, Input, OnChanges, SimpleChanges, ViewChild, inject } from '@angular/core';
+import { AfterViewChecked, Component, ElementRef, Input, NgZone, OnChanges, OnDestroy, SimpleChanges, ViewChild, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatFormField } from '@angular/material/form-field';
 import { MatInput } from '@angular/material/input';
@@ -15,11 +15,13 @@ import { ChatMessage } from '../models/document.model';
   templateUrl: './document-chat.component.html',
   styleUrl: './document-chat.component.scss',
 })
-export class DocumentChatComponent implements AfterViewChecked, OnChanges {
+export class DocumentChatComponent implements AfterViewChecked, OnChanges, OnDestroy {
   @Input() filename = '';
   @ViewChild('messageList') messageList!: ElementRef<HTMLElement>;
+  @ViewChild('chatInput', { read: ElementRef }) chatInput!: ElementRef<HTMLInputElement>;
 
   private chatService = inject(ChatService);
+  private zone = inject(NgZone);
 
   messages: ChatMessage[] = [];
   inputValue = '';
@@ -49,6 +51,7 @@ export class DocumentChatComponent implements AfterViewChecked, OnChanges {
         this.replaceTyping({ role: 'assistant', content: response.answer });
         this.isLoading = false;
         this.shouldScroll = true;
+        this.scheduleFocus();
       },
       error: err => {
         const text =
@@ -58,6 +61,7 @@ export class DocumentChatComponent implements AfterViewChecked, OnChanges {
         this.replaceTyping({ role: 'error', content: text });
         this.isLoading = false;
         this.shouldScroll = true;
+        this.scheduleFocus();
       },
     });
   }
@@ -74,6 +78,14 @@ export class DocumentChatComponent implements AfterViewChecked, OnChanges {
       this.scrollToBottom();
       this.shouldScroll = false;
     }
+  }
+
+  ngOnDestroy(): void {}
+
+  private scheduleFocus(): void {
+    this.zone.runOutsideAngular(() => {
+      setTimeout(() => this.chatInput.nativeElement.focus());
+    });
   }
 
   private replaceTyping(msg: ChatMessage): void {

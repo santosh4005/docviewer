@@ -105,5 +105,9 @@
   background: var(--mat-sys-surface);
   flex-shrink: 0;
 
-  .input-field { flex: 1; }
+  .input-field {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+  }
 }

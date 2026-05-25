@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from app.routes import chat, documents
 
@@ -35,7 +35,24 @@ def health():
     return {"status": "ok"}
 
 
-# Serve Angular static files — must be mounted last so /api/* routes take priority.
+# Serve Angular static files with SPA fallback for client-side routing.
 _static = Path(__file__).parent / "static"
-if _static.exists():
-    app.mount("/", StaticFiles(directory=str(_static), html=True), name="static")
+
+
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    if full_path.startswith("api/"):
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+
+    if not _static.exists():
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+
+    file_path = _static / full_path
+    if file_path.is_file():
+        return FileResponse(str(file_path))
+
+    index_path = _static / "index.html"
+    if index_path.exists():
+        return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+
+    return JSONResponse({"detail": "Not Found"}, status_code=404)

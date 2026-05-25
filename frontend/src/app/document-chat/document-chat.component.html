@@ -29,7 +29,8 @@
 
   <div class="chat-input">
     <mat-form-field appearance="outline" class="input-field" subscriptSizing="dynamic">
-      <input matInput
+      <input #chatInput
+             matInput
              [(ngModel)]="inputValue"
              (keydown)="onKeydown($event)"
              [disabled]="isLoading"
