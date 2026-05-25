@@ -8,22 +8,22 @@
 
 | Layer | Status | Notes |
 |---|---|---|
-| Backend — project scaffold | ✅ Done | `uv init`, all dependencies pinned in `uv.lock` |
+| Backend — project scaffold | ✅ Done | `uv init`; dependencies: `fastapi`, `uvicorn[standard]`, `mammoth`, `litellm`, `python-multipart` |
 | Backend — document routes | ✅ Done | `GET /api/documents`, `GET /api/documents/{filename}`, `GET /api/health` |
 | Backend — chat route | ✅ Done | `POST /api/chat` with 404 / 422 / 503 error handling |
-| Backend — mammoth converter | ✅ Done | HTML conversion + plain-text extraction |
-| Backend — Anthropic AI chat | ✅ Done | Claude API with ephemeral prompt caching |
+| Backend — mammoth converter | ✅ Done | HTML conversion (`convert_to_html`) + plain-text extraction (`extract_raw_text`) |
+| Backend — AI chat | ✅ Done | LiteLLM → OpenRouter → `gemini-2.5-flash-lite`; Pydantic Structured Output |
 | Backend — tests | ✅ Done | 10 tests, all passing (`uv run pytest`) |
 | Frontend — Angular project | ⬜ Not started | |
 | Docker / scripts | ⬜ Not started | |
 
 ### Implementation Decisions
 
-- **`lifespan` context manager** used instead of the deprecated `@app.on_event("startup")` in `main.py`.
-- **LiteLLM instead of Anthropic SDK** — `litellm.completion()` with `response_format=_ChatAnswer` (Pydantic Structured Output). LiteLLM is patched directly in tests; no lazy-client wrapper needed.
-- **API key check is in the route handler** (`chat.py`), not the service, so the 503 is returned before any file I/O or model call. Key is `OPENROUTER_API_KEY`; LiteLLM picks it up automatically.
-- **Static files mount is last** in `main.py` so `/api/*` routes always take priority over the Angular SPA catch-all.
-- **Test isolation for empty-docs test** — uses `monkeypatch` + `tmp_path` to point `DOCS_PATH` at a clean directory instead of deleting files from the shared session-scoped fixture, which would have broken other tests.
+- **LiteLLM via OpenRouter** instead of any vendor SDK — `litellm.completion()` with `model="openrouter/google/gemini-2.5-flash-lite"` and `response_format=_ChatAnswer` (Pydantic Structured Output). Response is read from `.choices[0].message.parsed`; falls back to `model_validate_json(.content)` for models that return a JSON string.
+- **`lifespan` context manager** used in `main.py` instead of the deprecated `@app.on_event("startup")`.
+- **API key check in the route handler** (`chat.py`), not the service — 503 is raised before any file I/O or LLM call. `OPENROUTER_API_KEY` is the required env var; LiteLLM reads it automatically.
+- **Static files mount is last** in `main.py` so `/api/*` routes always win over the Angular SPA catch-all.
+- **Test isolation for empty-docs test** — uses `monkeypatch` + pytest's `tmp_path` to point `DOCS_PATH` at a throwaway directory instead of deleting files shared by the session-scoped `sample_docx` fixture.
 
 ---
 
