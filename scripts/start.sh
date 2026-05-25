@@ -5,21 +5,12 @@ IMAGE="docviewer"
 CONTAINER="docviewer"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# ── Load .env if present ──────────────────────────────────────────────────
-if [[ -f "$ROOT/.env" ]]; then
-  while IFS='=' read -r key value; do
-    [[ "$key" =~ ^[[:space:]]*# ]] && continue   # skip comments
-    [[ -z "$key" ]] && continue                  # skip blank lines
-    key="${key%%[[:space:]]*}"                    # strip trailing whitespace
-    value="${value%%#*}"                          # strip inline comments
-    value="${value%"${value##*[![:space:]]}"}"    # trim trailing whitespace
-    value="${value#\"}" ; value="${value%\"}"     # strip optional quotes
-    [[ -n "$key" && -z "${!key+set}" ]] && export "$key=$value"
-  done < "$ROOT/.env"
-fi
-
 # ── Warn if API key is missing ─────────────────────────────────────────────
-if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+if [[ -f "$ROOT/.env" ]]; then
+  if ! grep -q "^OPENROUTER_API_KEY=.\+" "$ROOT/.env" 2>/dev/null && [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+    echo "Warning: OPENROUTER_API_KEY is not set — AI chat will return 503."
+  fi
+elif [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
   echo "Warning: OPENROUTER_API_KEY is not set — AI chat will return 503."
 fi
 
@@ -31,10 +22,13 @@ docker build -t "$IMAGE" "$ROOT"
 docker rm -f "$CONTAINER" 2>/dev/null || true
 
 # ── Run ───────────────────────────────────────────────────────────────────
+ENV_ARG=()
+[[ -f "$ROOT/.env" ]] && ENV_ARG=(--env-file "$ROOT/.env")
+
 docker run -d \
   --name "$CONTAINER" \
   -v "$ROOT/docs:/app/docs" \
-  -e "OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}" \
+  "${ENV_ARG[@]}" \
   -p 8000:8000 \
   "$IMAGE"
 
