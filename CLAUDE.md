@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-This project is in the **planning stage**. The full specification lives in `planning/PLAN.md`. No implementation files exist yet. When implementing, follow the directory structure and boundaries in that plan exactly.
+Backend is implemented and all tests pass. Frontend not yet started. Full specification in `planning/PLAN.md`.
 
 ## Architecture
 
@@ -25,7 +25,7 @@ scripts/    ← start/stop helpers (bash + PowerShell)
 - `backend/app/routes/documents.py` — `GET /api/documents`, `GET /api/documents/{filename}`
 - `backend/app/routes/chat.py` — `POST /api/chat`
 - `backend/app/services/converter.py` — wraps `mammoth` for `.docx` → HTML and plain-text extraction
-- `backend/app/services/ai_chat.py` — calls Anthropic Claude API; document text goes in the system prompt with `cache_control: ephemeral`; user question goes in the `user` turn (never in the system prompt)
+- `backend/app/services/ai_chat.py` — calls `litellm.completion()` with `response_format=_ChatAnswer` (Pydantic Structured Output) via OpenRouter (`openrouter/google/gemini-2.5-flash-lite`); document text in the system prompt, user question in the user turn
 
 ### Frontend (`frontend/`)
 
@@ -60,7 +60,7 @@ npm run build                    # production build → dist/
 ### Docker
 
 ```bash
-# Build and run (requires ANTHROPIC_API_KEY in environment)
+# Build and run (requires OPENROUTER_API_KEY in environment)
 ./scripts/start.sh
 
 # Stop
@@ -68,7 +68,7 @@ npm run build                    # production build → dist/
 
 # Manual build+run
 docker build -t docviewer .
-docker run -v $(pwd)/docs:/app/docs -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY -p 8000:8000 docviewer
+docker run -v $(pwd)/docs:/app/docs -e OPENROUTER_API_KEY=$OPENROUTER_API_KEY -p 8000:8000 docviewer
 ```
 
 ## Environment Variables
@@ -76,15 +76,14 @@ docker run -v $(pwd)/docs:/app/docs -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY -p 8
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `DOCS_PATH` | No | `/app/docs` | Path inside container to `.docx` files |
-| `ANTHROPIC_API_KEY` | Yes (for chat) | — | Anthropic API key; app returns 503 from `/api/chat` if missing |
-| `CLAUDE_MODEL` | No | `claude-sonnet-4-6` | Claude model for document Q&A |
+| `OPENROUTER_API_KEY` | Yes (for chat) | — | OpenRouter API key; app returns 503 from `/api/chat` if missing |
 
 ## Key Implementation Notes
 
 - **Document conversion is on-demand**, not cached at startup. mammoth handles a typical doc in < 100 ms.
 - **AI chat uses plain text** (`mammoth.extract_raw_text()`), not HTML, to keep the prompt compact.
-- **Prompt caching**: apply `cache_control: {"type": "ephemeral"}` to the document text block in the system prompt so repeated questions about the same doc hit the Anthropic cache.
-- **`/api/chat` security**: `ANTHROPIC_API_KEY` is server-side only. The frontend never sends raw document text — only `{ filename, question }`.
+- **Structured Outputs**: `ai_chat.py` passes `response_format=_ChatAnswer` (a Pydantic model) to `litellm.completion()`; response is read from `.choices[0].message.parsed`, with a fallback to `model_validate_json(.content)`.
+- **`/api/chat` security**: `OPENROUTER_API_KEY` is server-side only. The frontend never sends raw document text — only `{ filename, question }`.
 - **Dockerfile is multi-stage**: Stage 1 = Node 20 (Angular build); Stage 2 = Python 3.12 (copies `dist/` into `backend/static/`).
 
 ## CI / GitHub Actions

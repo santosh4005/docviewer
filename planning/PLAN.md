@@ -4,6 +4,29 @@
 
 ---
 
+## Implementation Status
+
+| Layer | Status | Notes |
+|---|---|---|
+| Backend — project scaffold | ✅ Done | `uv init`, all dependencies pinned in `uv.lock` |
+| Backend — document routes | ✅ Done | `GET /api/documents`, `GET /api/documents/{filename}`, `GET /api/health` |
+| Backend — chat route | ✅ Done | `POST /api/chat` with 404 / 422 / 503 error handling |
+| Backend — mammoth converter | ✅ Done | HTML conversion + plain-text extraction |
+| Backend — Anthropic AI chat | ✅ Done | Claude API with ephemeral prompt caching |
+| Backend — tests | ✅ Done | 10 tests, all passing (`uv run pytest`) |
+| Frontend — Angular project | ⬜ Not started | |
+| Docker / scripts | ⬜ Not started | |
+
+### Implementation Decisions
+
+- **`lifespan` context manager** used instead of the deprecated `@app.on_event("startup")` in `main.py`.
+- **LiteLLM instead of Anthropic SDK** — `litellm.completion()` with `response_format=_ChatAnswer` (Pydantic Structured Output). LiteLLM is patched directly in tests; no lazy-client wrapper needed.
+- **API key check is in the route handler** (`chat.py`), not the service, so the 503 is returned before any file I/O or model call. Key is `OPENROUTER_API_KEY`; LiteLLM picks it up automatically.
+- **Static files mount is last** in `main.py` so `/api/*` routes always take priority over the Angular SPA catch-all.
+- **Test isolation for empty-docs test** — uses `monkeypatch` + `tmp_path` to point `DOCS_PATH` at a clean directory instead of deleting files from the shared session-scoped fixture, which would have broken other tests.
+
+---
+
 ## 1. Vision
 
 DocViewer is a lightweight web application that reads a folder of `.docx` Word documents from disk and renders them beautifully in the browser. It preserves all key formatting — headings, tables, images, bold/italic text, and lists — so users can browse and read documents without needing Microsoft Word installed.
@@ -71,7 +94,7 @@ The user runs a single Docker command. A browser opens to `http://localhost:8000
 - **Frontend**: Angular (TypeScript), built as a static export, served by FastAPI (`frontend/`)
 - **Backend**: FastAPI (Python), managed as a `uv` project (`backend/`)
 - **Document conversion**: `mammoth` — converts `.docx` to clean, semantic HTML
-- **AI chat**: Anthropic Claude API — answers user questions grounded in the current document's text
+- **AI chat**: LiteLLM via OpenRouter (`openrouter/google/gemini-2.5-flash-lite`) — answers user questions grounded in the current document's text using Structured Outputs
 - **Storage**: No database — the `docs/` folder on disk is the source of truth
 
 ### Why These Choices
@@ -81,7 +104,7 @@ The user runs a single Docker command. A browser opens to `http://localhost:8000
 | FastAPI over Django/Flask | Lightweight, async-capable, fast startup, excellent for serving static files + small API |
 | mammoth over python-docx | Designed specifically for `.docx` → HTML; preserves semantic structure better than raw XML parsing |
 | Angular | Chosen by the user; well-suited for a structured document browser SPA |
-| Claude API for chat | First-class document Q&A; easy to ground answers in context via the system prompt |
+| LiteLLM + OpenRouter for chat | Provider-agnostic wrapper; OpenRouter gives access to Gemini 2.5 Flash Lite without vendor lock-in; Structured Outputs guarantee a parseable response |
 | No database | Documents live on disk; no persistence layer needed for a read-only app |
 | No search | Out of scope for v1; keeps the stack simple and the container small |
 | Single container | One `docker run` command; no orchestration needed |
@@ -162,14 +185,11 @@ docviewer/
 # Path inside the container where .docx files are read from
 DOCS_PATH=/app/docs
 
-# Anthropic API key — required for the AI chat feature
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Claude model to use for document Q&A (default shown below)
-CLAUDE_MODEL=claude-sonnet-4-6
+# OpenRouter API key — required for the AI chat feature
+OPENROUTER_API_KEY=sk-or-...
 ```
 
-`DOCS_PATH` defaults to `/app/docs`. `ANTHROPIC_API_KEY` must be set; the app logs a warning at startup if it is missing and returns a 503 from `/api/chat` until it is provided.
+`DOCS_PATH` defaults to `/app/docs`. `OPENROUTER_API_KEY` must be set; the app logs a warning at startup if it is missing and returns a 503 from `/api/chat` until it is provided. The model is fixed to `openrouter/google/gemini-2.5-flash-lite` and is not configurable via environment variable.
 
 ---
 
@@ -330,9 +350,9 @@ All frontend code lives in `frontend/src/app/`.
 
 ## 9. AI Chat Feature
 
-### AI design
+### AI Design
 
-When writing code to make calls to LLMs, use your Cerebras skill to use LiteLLM via OpenRouter to the `openrouter/google/gemini-2.5-flash-lite` model. You should use Structured Outputs so that you can interpret the results.
+Use LiteLLM via OpenRouter to call the `openrouter/google/gemini-2.5-flash-lite` model. Use Structured Outputs (`response_format` with a Pydantic model) so the response is always machine-parseable.
 
 ### How It Works
 
@@ -343,7 +363,7 @@ When writing code to make calls to LLMs, use your Cerebras skill to use LiteLLM 
    a. Resolves the `.docx` file path from `DOCS_PATH`.
    b. Calls `converter.extract_text(filename)` to get plain text via `mammoth.extract_raw_text()`.
    c. Calls `ai_chat.answer(document_text, question)`.
-5. `ai_chat.py` calls the Anthropic Claude API with a system prompt that grounds the model strictly in the document content.
+5. `ai_chat.py` calls `litellm.completion()` with `response_format=_ChatAnswer` (Structured Output) and a system prompt that grounds the model strictly in the document content.
 6. The response is returned to the frontend and appended to the chat history.
 
 ### System Prompt Design (`backend/app/services/ai_chat.py`)
@@ -359,13 +379,13 @@ Do not speculate or add information from outside the document.
 --- DOCUMENT END ---
 ```
 
-### Claude API Call (`backend/app/services/ai_chat.py`)
+### LiteLLM API Call (`backend/app/services/ai_chat.py`)
 
-- Uses the `anthropic` Python SDK (`pip install anthropic`)
-- Model: value of `CLAUDE_MODEL` env var (default: `claude-sonnet-4-6`)
+- Uses the `litellm` Python SDK
+- Model: `openrouter/google/gemini-2.5-flash-lite` (fixed constant, not env-configurable)
+- `response_format=_ChatAnswer` — Pydantic Structured Output; response is parsed via `.choices[0].message.parsed`, with a fallback to `model_validate_json(.content)` for models that return a JSON string instead
 - `max_tokens`: 1024 — sufficient for typical document Q&A answers
 - No streaming in v1 — wait for the full response before returning
-- Prompt caching: apply `cache_control: {"type": "ephemeral"}` to the document text block so repeated questions about the same document hit the cache
 
 ### Backend File: `backend/app/routes/chat.py`
 
@@ -387,7 +407,7 @@ Do not speculate or add information from outside the document.
 ### Security Notes
 
 - The document text is injected into the system prompt server-side. The frontend never sends raw document text to the API.
-- `ANTHROPIC_API_KEY` is read from environment variables only — never hardcoded or exposed to the frontend.
+- `OPENROUTER_API_KEY` is read from environment variables only — never hardcoded or exposed to the frontend.
 - User questions are passed as `user` messages, not injected into the system prompt, to prevent prompt injection.
 
 ---
@@ -419,7 +439,7 @@ The `docs/` folder is mounted into the container at runtime:
 
 ```bash
 docker run -v /path/to/your/docs:/app/docs \
-           -e ANTHROPIC_API_KEY=sk-ant-... \
+           -e OPENROUTER_API_KEY=sk-or-... \
            -p 8000:8000 docviewer
 ```
 
@@ -429,7 +449,7 @@ The start script handles the volume and port mapping automatically.
 
 **`scripts/start.sh`** (macOS/Linux):
 - Builds the Docker image if not already built (or if `--build` flag passed)
-- Runs the container with the volume mount, port mapping, and `ANTHROPIC_API_KEY` from the host environment
+- Runs the container with the volume mount, port mapping, and `OPENROUTER_API_KEY` from the host environment
 - Prints `App running at http://localhost:8000`
 
 **`scripts/stop.sh`** (macOS/Linux):
@@ -451,9 +471,9 @@ All scripts are idempotent — safe to run multiple times.
 - **API routes — chat**: 
   - Returns 200 with `answer` field when `ANTHROPIC_API_KEY` is set and document exists
   - Returns 404 for unknown filename
-  - Returns 503 when `ANTHROPIC_API_KEY` is missing
-  - Mocks the Anthropic client so tests do not make real API calls
-- **`ai_chat.py`**: system prompt contains document text; question is in the user message; correct model and max_tokens used
+  - Returns 503 when `OPENROUTER_API_KEY` is missing
+  - Mocks `litellm.completion` so tests do not make real API calls
+- **`ai_chat.py`**: system prompt contains document text; question is in the user message; `response_format` is set to the Pydantic model
 - **Edge cases**: corrupt file returns 422; filename with spaces handled correctly
 
 ### Frontend (Jest + Angular Testing Library) — lives in `frontend/`
