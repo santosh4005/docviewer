@@ -23,11 +23,9 @@ if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
   echo "Warning: OPENROUTER_API_KEY is not set — AI chat will return 503."
 fi
 
-# ── Build if image is missing or --build flag is passed ───────────────────
-if [[ "${1:-}" == "--build" ]] || ! docker image inspect "$IMAGE" &>/dev/null; then
-  echo "Building Docker image…"
-  docker build -t "$IMAGE" "$ROOT"
-fi
+# ── Build image (Docker layer cache makes this fast when nothing changed) ──
+echo "Building Docker image…"
+docker build -t "$IMAGE" "$ROOT"
 
 # ── Remove stale container if present ─────────────────────────────────────
 docker rm -f "$CONTAINER" 2>/dev/null || true
