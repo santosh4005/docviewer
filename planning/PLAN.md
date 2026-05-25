@@ -14,16 +14,33 @@
 | Backend — mammoth converter | ✅ Done | HTML conversion (`convert_to_html`) + plain-text extraction (`extract_raw_text`) |
 | Backend — AI chat | ✅ Done | LiteLLM → OpenRouter → `gemini-2.5-flash-lite`; Pydantic Structured Output |
 | Backend — tests | ✅ Done | 10 tests, all passing (`uv run pytest`) |
-| Frontend — Angular project | ⬜ Not started | |
+| Frontend — Angular project | ✅ Done | Angular 21, standalone components, Angular Material 3 |
+| Frontend — document-index | ✅ Done | Card grid, spinner, empty state, error state |
+| Frontend — document-view | ✅ Done | Two-column layout, `DomSanitizer`, `::ng-deep` doc styles |
+| Frontend — document-chat | ✅ Done | Bubble messages, typing indicator, mobile overlay |
+| Frontend — services | ✅ Done | `DocumentService`, `ChatService`; `encodeURIComponent` for filenames |
+| Frontend — unit tests | ✅ Done | 17 tests, all passing (`npm test`) |
+| Frontend — integration tests | ✅ Done | 10 tests against real backend (`npm run test:integration`) |
 | Docker / scripts | ⬜ Not started | |
 
-### Implementation Decisions
+### Backend Implementation Decisions
 
 - **LiteLLM via OpenRouter** instead of any vendor SDK — `litellm.completion()` with `model="openrouter/google/gemini-2.5-flash-lite"` and `response_format=_ChatAnswer` (Pydantic Structured Output). Response is read from `.choices[0].message.parsed`; falls back to `model_validate_json(.content)` for models that return a JSON string.
 - **`lifespan` context manager** used in `main.py` instead of the deprecated `@app.on_event("startup")`.
 - **API key check in the route handler** (`chat.py`), not the service — 503 is raised before any file I/O or LLM call. `OPENROUTER_API_KEY` is the required env var; LiteLLM reads it automatically.
 - **Static files mount is last** in `main.py` so `/api/*` routes always win over the Angular SPA catch-all.
 - **Test isolation for empty-docs test** — uses `monkeypatch` + pytest's `tmp_path` to point `DOCS_PATH` at a throwaway directory instead of deleting files shared by the session-scoped `sample_docx` fixture.
+
+### Frontend Implementation Decisions
+
+- **Angular 21 with Vitest** — Angular CLI 21 configures Vitest by default (not Jest/Karma). All unit tests use `TestBed` + `HttpTestingController` via Vitest; no extra test runner configuration needed.
+- **`encodeURIComponent(filename)`** called explicitly in `DocumentService.getDocument()` — filenames with spaces (e.g. `Annual Report.docx`) must be percent-encoded before embedding in the URL path. `HttpClient` does not encode path segments automatically.
+- **`paramMap` observable instead of `snapshot`** in `DocumentViewComponent.ngOnInit()` — subscribing to the observable handles the case where Angular reuses the component instance across navigations between different `/doc/:filename` routes.
+- **`ngOnChanges` in `DocumentChatComponent`** — clears `messages`, `inputValue`, and `isLoading` when `filename` input changes, so chat history never bleeds between documents if the component is reused.
+- **`::ng-deep .doc-content { ... }`** in `document-view.component.scss` — required to style mammoth-generated HTML injected via `[innerHTML]`, since Angular's emulated encapsulation does not pierce into dynamically-inserted DOM nodes.
+- **`changeOrigin: true`** in `src/proxy.conf.json` — prevents the dev-server proxy from forwarding the browser's `Host: localhost:4200` header to the backend, which would mismatch the backend's own host.
+- **`of()` observables in unit tests** emit synchronously — component state is fully settled immediately after `send()`, so no `fakeAsync`/`tick()` or zone.js is needed. Tests that verify in-flight loading state check `comp.isLoading` directly rather than polling the DOM.
+- **Integration tests use plain `fetch`** in a Node Vitest environment (`vitest.integration.config.ts`) — no Angular DI or TestBed needed; tests verify the API contract (status codes, response shapes, error codes) against the real FastAPI process.
 
 ---
 

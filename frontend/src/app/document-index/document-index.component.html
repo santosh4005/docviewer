@@ -1,0 +1,33 @@
+<div class="index-container">
+  <header class="index-header">
+    <mat-icon class="header-icon">folder_open</mat-icon>
+    <h1>Documents</h1>
+  </header>
+
+  <main class="index-content">
+    @if (loading) {
+      <div class="center">
+        <mat-spinner diameter="48" />
+      </div>
+    } @else if (error) {
+      <p class="error-text">{{ error }}</p>
+    } @else if (documents.length === 0) {
+      <div class="empty-state">
+        <mat-icon class="empty-icon">inbox</mat-icon>
+        <p>No documents found. Add .docx files to the docs/ folder.</p>
+      </div>
+    } @else {
+      <div class="doc-grid">
+        @for (doc of documents; track doc.filename) {
+          <mat-card [routerLink]="['/doc', doc.filename]" class="doc-card">
+            <mat-card-content>
+              <mat-icon class="doc-icon">description</mat-icon>
+              <span class="doc-name">{{ doc.display_name }}</span>
+              <mat-icon class="chevron">chevron_right</mat-icon>
+            </mat-card-content>
+          </mat-card>
+        }
+      </div>
+    }
+  </main>
+</div>

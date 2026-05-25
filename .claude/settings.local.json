@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx @angular/cli@latest add @angular/material --skip-confirmation --defaults)"
+    ]
+  }
+}

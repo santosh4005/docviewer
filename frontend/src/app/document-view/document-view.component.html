@@ -1,0 +1,40 @@
+<div class="view-container">
+  <header class="view-header">
+    <a routerLink="/" class="back-link">
+      <mat-icon>arrow_back</mat-icon>
+      Back to Documents
+    </a>
+
+    @if (!loading && !error) {
+      <span class="doc-title">{{ displayName }}</span>
+    }
+
+    <button mat-stroked-button class="chat-toggle" (click)="toggleChat()" aria-label="Toggle chat panel">
+      <mat-icon>chat</mat-icon>
+      Chat
+    </button>
+  </header>
+
+  @if (loading) {
+    <div class="center">
+      <mat-spinner diameter="48" />
+    </div>
+  } @else if (error) {
+    <div class="error-container">
+      <mat-icon class="error-icon">error_outline</mat-icon>
+      <p>{{ error }}</p>
+      <a routerLink="/" mat-stroked-button>Go back to documents</a>
+    </div>
+  } @else {
+    <div class="view-body">
+      <article class="doc-content" [innerHTML]="safeHtml"></article>
+
+      <aside class="chat-panel" [class.open]="chatOpen">
+        <button mat-icon-button class="chat-close" (click)="toggleChat()" aria-label="Close chat">
+          <mat-icon>close</mat-icon>
+        </button>
+        <app-document-chat [filename]="filename" />
+      </aside>
+    </div>
+  }
+</div>
